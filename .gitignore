@@ -1,0 +1,6 @@
+bbqr.egg-info/
+build/
+dist/
+.pypirc
+MANIFEST.in
+setup.py

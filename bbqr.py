@@ -11,20 +11,104 @@ import argparse
 import platform
 import qrcode
 import pyperclip
-from PIL import Image
-from colorama import Fore, Style, init
 import base64
 import time
 import webbrowser
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from pyzbar import pyzbar
 import requests
 import json
 import math
 import hashlib
 import threading
+import tempfile
+import datetime
+import glob
+from PIL import Image
+from colorama import Fore, Style, init
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Handle pyzbar import with automatic dependency installation
+pyzbar = None
+try:
+    from pyzbar import pyzbar
+except ImportError as initial_error:
+    # First check if colorama is available for colored output
+    try:
+        from colorama import Fore, Style, init
+        init(autoreset=True)
+    except ImportError:
+        # Fallback to no colors if colorama isn't available yet
+        class FakeColors:
+            YELLOW = RED = GREEN = CYAN = ""
+        Fore = FakeColors()
+    
+    print(f"{Fore.YELLOW}📦 zbar library not found. Installing system dependencies...")
+    
+    # Try to install zbar system dependency
+    system = platform.system().lower()
+    success = False
+    
+    try:
+        if system == "linux":
+            # Try different package managers
+            try:
+                print(f"{Fore.CYAN}Trying apt-get (Ubuntu/Debian)...")
+                subprocess.run(["sudo", "apt-get", "update"], check=True, capture_output=True)
+                subprocess.run(["sudo", "apt-get", "install", "-y", "libzbar0"], check=True, capture_output=True)
+                success = True
+                print(f"{Fore.GREEN}✅ Installed libzbar0 via apt-get")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                try:
+                    print(f"{Fore.CYAN}Trying yum (RHEL/CentOS/Fedora)...")
+                    subprocess.run(["sudo", "yum", "install", "-y", "zbar"], check=True, capture_output=True)
+                    success = True
+                    print(f"{Fore.GREEN}✅ Installed zbar via yum")
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    try:
+                        print(f"{Fore.CYAN}Trying pacman (Arch Linux)...")
+                        subprocess.run(["sudo", "pacman", "-S", "--noconfirm", "zbar"], check=True, capture_output=True)
+                        success = True
+                        print(f"{Fore.GREEN}✅ Installed zbar via pacman")
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        print(f"{Fore.RED}❌ Could not install zbar automatically.")
+                        
+        elif system == "darwin":  # macOS
+            try:
+                print(f"{Fore.CYAN}Trying brew (macOS)...")
+                subprocess.run(["brew", "install", "zbar"], check=True, capture_output=True)
+                success = True
+                print(f"{Fore.GREEN}✅ Installed zbar via brew")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print(f"{Fore.RED}❌ Could not install zbar via brew.")
+                
+        elif system == "windows":
+            print(f"{Fore.YELLOW}⚠️ Windows: QR reading requires manual zbar installation")
+            print(f"{Fore.CYAN}  Please visit: https://pypi.org/project/pyzbar/ for instructions")
+        
+        # If system dependency was installed, try importing pyzbar again
+        if success:
+            try:
+                print(f"{Fore.CYAN}Attempting to import pyzbar again...")
+                from pyzbar import pyzbar
+                print(f"{Fore.GREEN}🎉 Successfully imported pyzbar after installing system dependencies!")
+            except ImportError as e:
+                print(f"{Fore.RED}❌ Still cannot import pyzbar after installing system deps: {e}")
+                print(f"{Fore.YELLOW}⚠️ QR code reading features will be disabled")
+        else:
+            print(f"{Fore.YELLOW}⚠️ Could not install system dependencies automatically")
+            print(f"{Fore.YELLOW}⚠️ QR code reading features will be disabled")
+            print(f"{Fore.CYAN}💡 Manual installation instructions:")
+            if system == "linux":
+                print(f"{Fore.CYAN}   Ubuntu/Debian: sudo apt-get install libzbar0")
+                print(f"{Fore.CYAN}   RHEL/CentOS:   sudo yum install zbar")
+                print(f"{Fore.CYAN}   Arch Linux:    sudo pacman -S zbar")
+            elif system == "darwin":
+                print(f"{Fore.CYAN}   macOS:         brew install zbar")
+                
+    except Exception as e:
+        print(f"{Fore.RED}❌ Exception during automatic installation: {e}")
+        print(f"{Fore.YELLOW}⚠️ QR code reading features will be disabled")
 
 # Initialize colorama for cross-platform color support
 init(autoreset=True)

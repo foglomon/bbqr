@@ -39,17 +39,26 @@ BBQR can handle all your QR code grilling needs:
 
 ## 🔧 Installation
 
-### Prerequisites
+### Installation
 
-- Python 3.7 or higher
-- Cross-platform support (Windows, macOS, Linux)
+```bash
+pip install bbqr
+```
 
-### Quick Setup
+Then start grilling:
 
-1. **Clone or download** this repository:
+```bash
+bbqr --help
+```
+
+### Development Setup
+
+If you want to contribute or run from source:
+
+1. **Clone the repository**:
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/foglomon/bbqr
    cd bbqr
    ```
 
@@ -70,29 +79,29 @@ BBQR can handle all your QR code grilling needs:
 
 ```bash
 # Basic QR generation
-python bbqr.py --url "https://github.com"
-python bbqr.py --text "Hello, World!"
-python bbqr.py --image photo.jpg
-python bbqr.py --clipboard
-python bbqr.py --wifi
+bbqr --url "https://github.com"
+bbqr --text "Hello, World!"
+bbqr --image photo.jpg
+bbqr --clipboard
+bbqr --wifi
 
 # File operations
-python bbqr.py --file document.pdf
-python bbqr.py --read qrcode.png
+bbqr --file document.pdf
+bbqr --read qrcode.png
 
 # Advanced features
-python bbqr.py --watch notes.txt
-python bbqr.py --multi urls.txt
-python bbqr.py --watch journal.md --output qr_codes/
+bbqr --watch notes.txt
+bbqr --multi urls.txt
+bbqr --watch journal.md --output qr_codes/
 
 # Options
-python bbqr.py --text "Hello" --size 15 --save --copy
-python bbqr.py --url "https://github.com" --save
+bbqr --text "Hello" --size 15 --save --copy
+bbqr --url "https://github.com" --save
 
 # Piped input
-echo "Secret message" | python bbqr.py
-date | python bbqr.py --save
-curl -s https://api.github.com/users/octocat | python bbqr.py
+echo "Secret message" | bbqr
+date | bbqr --save
+curl -s https://api.github.com/users/octocat | bbqr
 ```
 
 ### Interactive Mode
@@ -100,7 +109,7 @@ curl -s https://api.github.com/users/octocat | python bbqr.py
 Run without arguments for the BBQ-themed menu:
 
 ```bash
-python bbqr.py
+bbqr
 ```
 
 You'll see a beautiful interface:
@@ -507,7 +516,7 @@ Uses Windows `netsh` command for:
 
 ## 📄 License
 
-MIT License - Feel free to grill this code however you like!
+GNU GPLv3
 
 ## 🔥 Examples
 
