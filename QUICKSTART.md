@@ -2,6 +2,13 @@
 
 ## Installation
 
+1. **Use pip to install bbqr**
+   ```bash
+   pip install bbqr
+   ```
+
+## Development Installation
+
 1. **Install dependencies**:
 
    ```bash
