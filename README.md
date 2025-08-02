@@ -1,6 +1,6 @@
 # 🔥 BBQR (Barbequer) - QR Code Generator 🔥
 
-Welcome to **BBQR** (pronounced "barbequer"), the hottest terminal-based QR code generator that grills your data to perfection!
+**BBQR** (pronounced "barbequer"), the hottest terminal-based QR code generator that grills your data to perfection!
 
 ## 🍖 Features
 
