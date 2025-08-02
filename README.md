@@ -13,6 +13,7 @@ BBQR can handle all your QR code grilling needs:
 - 🖼️ **Images** - Convert images to base64 QR codes
 - 📋 **Clipboard** - Automatically grab clipboard content
 - 🔄 **Piped Input** - Accept data from pipes and redirects
+- 🎨 **Logo Embedding** - Add custom logos to QR codes with high-quality rendering
 
 ### WiFi QR Codes (Cross-Platform)
 
@@ -36,6 +37,7 @@ BBQR can handle all your QR code grilling needs:
 - 📂 **Multi QR Generation**: Process multiple lines from files
 - 🔍 **QR Code Reader**: Decode and handle various QR content types
 - 🎨 **BBQ Theme**: Colorful, fun interface with ASCII art
+- 🖼️ **High-Quality Logo Support**: aspect ratio preservation
 
 ## 🔧 Installation
 
@@ -98,6 +100,11 @@ bbqr --watch journal.md --output qr_codes/
 bbqr --text "Hello" --size 15 --save --copy
 bbqr --url "https://github.com" --save
 
+# Logo embedding
+bbqr --url "https://mycompany.com" --logo company_logo.png
+bbqr --wifi --logo logo.png --logo-size 25
+bbqr --text "Hello World!" --logo brand.jpg --save
+
 # Piped input
 echo "Secret message" | bbqr
 date | bbqr --save
@@ -144,6 +151,43 @@ Time to grill your data into delicious QR codes!
 - **Auto-generated filenames**: `bbqr_[type]_[YYYYMMDD_HHMMSS].png`
 - **Safe naming**: No overwriting, proper extensions
 - **Multiple formats supported**: PNG output for all QR types
+
+## 🎨 Logo Embedding
+
+BBQR now supports adding custom logos to your QR codes with professional-quality rendering:
+
+### Features
+
+- **High-Quality Processing**: LANCZOS resampling for crisp logo rendering
+- **Aspect Ratio Preservation**: Logos maintain their original proportions
+- **Multiple Format Support**: PNG, JPG, JPEG, GIF, BMP, TIFF
+- **Transparency Support**: Full RGBA and palette transparency handling
+- **Error Correction**: Automatically uses higher error correction for logo QR codes
+- **Auto-Save**: QR codes with logos are automatically saved to files
+
+### Usage
+
+```bash
+# Add logo via command line
+bbqr --text "Hello World!" --logo company_logo.png
+bbqr --wifi --logo brand.jpg --logo-size 25
+bbqr --url "https://mysite.com" --logo logo.png --logo-size 15
+
+# Interactive mode prompts for logo options
+bbqr
+```
+
+### Logo Size Options
+
+- Size range: 10-30% of QR code size
+- Default: 20% (optimal for most designs)
+- Larger logos may affect scannability
+
+### Technical Details
+
+- Uses higher error correction (ERROR_CORRECT_H) when logos are embedded
+- Logos are centered and scaled proportionally
+- Output files include timestamp: `bbqr_[type]_with_logo_[timestamp].png`
 
 ## 📶 WiFi QR Codes
 

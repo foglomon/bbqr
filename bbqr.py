@@ -147,7 +147,7 @@ class BBQTheme:
         print(f"{Fore.YELLOW}{BBQTheme.SMOKE} Smoking your data into a QR code...")
 
 def get_file_path(prompt, allow_empty=False):
-    """Get file path with enhanced path support (no tab completion)"""
+    """Get file path with enhanced path support"""
     try:
         print(f"{Fore.CYAN}📁 Current directory: {os.getcwd()}")
         print(f"{Fore.CYAN}🏠 Use ~ for home directory, relative/absolute paths supported")
@@ -160,7 +160,7 @@ def get_file_path(prompt, allow_empty=False):
         if not user_input:
             return ""
         
-        # Handle quoted paths (remove quotes)
+        # Handle quoted paths
         if user_input.startswith('"') and user_input.endswith('"'):
             user_input = user_input[1:-1]
         elif user_input.startswith("'") and user_input.endswith("'"):
@@ -1442,13 +1442,144 @@ class QRCooker:
         self.size = size
         self.border = border
     
-    def cook_qr(self, data, save_file=False, copy_to_clipboard=False, prefix="qr"):
-        """Cook (generate) a QR code from data"""
+    def _prepare_logo(self, logo_path, qr_img_size, logo_size_ratio=0.2):
+        """Prepare logo image for embedding in QR code with high quality preservation"""
+        try:
+            # Open and validate logo image
+            logo = Image.open(logo_path)
+            
+            # Calculate logo size (percentage of QR code size)
+            qr_width, qr_height = qr_img_size
+            logo_size = int(min(qr_width, qr_height) * logo_size_ratio)
+            
+            # Use high-quality resampling and preserve aspect ratio
+            # Calculate the size to maintain aspect ratio
+            logo_ratio = min(logo_size / logo.width, logo_size / logo.height)
+            new_width = int(logo.width * logo_ratio)
+            new_height = int(logo.height * logo_ratio)
+            
+            # Use LANCZOS for highest quality downsampling
+            logo_resized = logo.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Return the resized logo with original mode preserved
+            return logo_resized
+            
+        except Exception as e:
+            BBQTheme.error(f"Failed to prepare logo: {e}")
+            return None
+    
+    def _embed_logo(self, qr_img, logo):
+        """Embed logo in the center of QR code with high-quality blending"""
+        try:
+            # Convert QR image to RGBA for high-quality compositing
+            if qr_img.mode != 'RGBA':
+                qr_with_alpha = qr_img.convert('RGBA')
+            else:
+                qr_with_alpha = qr_img.copy()
+            
+            # Calculate position to center the logo
+            qr_width, qr_height = qr_with_alpha.size
+            logo_width, logo_height = logo.size
+            
+            # Position logo in center
+            pos_x = (qr_width - logo_width) // 2
+            pos_y = (qr_height - logo_height) // 2
+            
+            # Handle different logo modes for optimal quality
+            if logo.mode in ('RGBA', 'LA'):
+                # Direct alpha compositing for transparent images
+                qr_with_alpha.paste(logo, (pos_x, pos_y), logo)
+            elif logo.mode == 'P':
+                # Convert palette to RGBA for better quality
+                if 'transparency' in logo.info:
+                    logo_rgba = logo.convert('RGBA')
+                    qr_with_alpha.paste(logo_rgba, (pos_x, pos_y), logo_rgba)
+                else:
+                    logo_rgb = logo.convert('RGB')
+                    qr_with_alpha.paste(logo_rgb, (pos_x, pos_y))
+            else:
+                # For RGB and other modes, direct paste
+                qr_with_alpha.paste(logo, (pos_x, pos_y))
+            
+            # Convert back to RGB for final output (most QR readers expect RGB)
+            final_img = Image.new('RGB', qr_with_alpha.size, 'white')
+            final_img.paste(qr_with_alpha, mask=qr_with_alpha.split()[-1] if qr_with_alpha.mode == 'RGBA' else None)
+            
+            return final_img
+            
+        except Exception as e:
+            BBQTheme.error(f"Failed to embed logo: {e}")
+            return qr_img
+    
+    def _create_logo_matrix(self, qr_matrix, logo_path, logo_size_ratio=0.2):
+        """Create a modified QR matrix that shows actual logo in terminal display"""
+        try:
+            # Create a copy of the matrix
+            matrix_with_logo = [row[:] for row in qr_matrix]
+            
+            # Calculate logo area in matrix coordinates
+            matrix_size = len(qr_matrix)
+            logo_matrix_size = int(matrix_size * logo_size_ratio)
+            
+            # Calculate center position
+            start_x = (matrix_size - logo_matrix_size) // 2
+            start_y = (matrix_size - logo_matrix_size) // 2
+            end_x = start_x + logo_matrix_size
+            end_y = start_y + logo_matrix_size
+            
+            # Load and convert logo to grayscale for ASCII representation
+            try:
+                logo = Image.open(logo_path)
+                # Resize logo to fit the matrix area
+                logo_resized = logo.resize((logo_matrix_size, logo_matrix_size), Image.Resampling.LANCZOS)
+                # Convert to grayscale for intensity analysis
+                logo_gray = logo_resized.convert('L')
+                
+                # Convert logo pixels to boolean matrix (threshold-based)
+                logo_pixels = list(logo_gray.getdata())
+                threshold = 128  # Middle gray value
+                
+                # Apply logo pattern to QR matrix
+                for y in range(logo_matrix_size):
+                    for x in range(logo_matrix_size):
+                        matrix_y = start_y + y
+                        matrix_x = start_x + x
+                        if 0 <= matrix_y < matrix_size and 0 <= matrix_x < matrix_size:
+                            pixel_index = y * logo_matrix_size + x
+                            if pixel_index < len(logo_pixels):
+                                # Use logo pixel intensity to determine if it should be black or white
+                                # Invert logic since we want dark logo parts to show as QR code blocks
+                                matrix_with_logo[matrix_y][matrix_x] = logo_pixels[pixel_index] < threshold
+                
+            except Exception as logo_error:
+                # Fallback to a simple logo indicator if logo processing fails
+                BBQTheme.error(f"Could not process logo for terminal display: {logo_error}")
+                # Create a simple border pattern to indicate logo area
+                for y in range(start_y, end_y):
+                    for x in range(start_x, end_x):
+                        if 0 <= y < matrix_size and 0 <= x < matrix_size:
+                            # Create border pattern
+                            if (y == start_y or y == end_y - 1 or x == start_x or x == end_x - 1):
+                                matrix_with_logo[y][x] = True
+                            else:
+                                matrix_with_logo[y][x] = False
+            
+            return matrix_with_logo
+            
+        except Exception as e:
+            BBQTheme.error(f"Failed to create logo matrix: {e}")
+            return qr_matrix
+
+    def cook_qr(self, data, save_file=False, copy_to_clipboard=False, prefix="qr", logo_path=None, logo_size_ratio=0.2):
+        """Cook (generate) a QR code from data with optional logo embedding"""
         BBQTheme.cooking()
+        
+        # Use higher error correction when embedding logo for better reliability
+        error_correction = qrcode.constants.ERROR_CORRECT_H if logo_path else qrcode.constants.ERROR_CORRECT_L
         
         qr = qrcode.QRCode(
             version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            error_correction=error_correction,
             box_size=self.size,
             border=self.border,
         )
@@ -1459,6 +1590,29 @@ class QRCooker:
         # Create QR code image
         img = qr.make_image(fill_color="black", back_color="white")
         
+        # Initialize saved filename for logo cases
+        saved_filename = None
+        
+        # Embed logo if provided
+        if logo_path:
+            BBQTheme.info(f"🎨 Adding logo to QR code...")
+            logo = self._prepare_logo(logo_path, img.size, logo_size_ratio)
+            if logo:
+                img = self._embed_logo(img, logo)
+                BBQTheme.success(f"🎨 Logo successfully embedded!")
+                
+                # Auto-save when logo is used
+                try:
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    saved_filename = f"bbqr_{prefix}_with_logo_{timestamp}.png"
+                    img.save(saved_filename)
+                    BBQTheme.success(f"QR code with logo saved to: {saved_filename}")
+                except Exception as e:
+                    BBQTheme.error(f"Failed to save QR code with logo: {e}")
+            else:
+                BBQTheme.error(f"❌ Failed to embed logo, continuing without it")
+        
         # Copy original data to clipboard if requested
         if copy_to_clipboard:
             try:
@@ -1467,8 +1621,8 @@ class QRCooker:
             except Exception as e:
                 BBQTheme.error(f"Failed to copy to clipboard: {e}")
         
-        # Auto-generate filename if saving
-        if save_file:
+        # Save file if requested (for non-logo QR codes only, logo QR codes are auto-saved)
+        if save_file and not logo_path:
             try:
                 import datetime
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1478,25 +1632,61 @@ class QRCooker:
             except Exception as e:
                 BBQTheme.error(f"Failed to save QR code: {e}")
         
-        # Always display in terminal
-        self.display_terminal_qr(qr)
+        # Always display the original QR code in terminal (without logo)
+        if logo_path:
+            self.display_terminal_qr_with_logo_message(qr.get_matrix(), saved_filename)
+        else:
+            self.display_terminal_qr(qr)
         
         return img
     
     def display_terminal_qr(self, qr_code):
         """Display QR code in terminal using ASCII characters - compatible with dark/light modes"""
+        matrix = qr_code.get_matrix()
+        self.display_terminal_qr_with_logo(matrix, False)
+    
+    def display_terminal_qr_with_logo_message(self, matrix, saved_filename=None):
+        """Display QR code without logo and show message about saved logo version"""
         print(f"\n{Fore.YELLOW}🔥 Your perfectly grilled QR code is ready! 🔥")
         print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         
-        matrix = qr_code.get_matrix()
         for row in matrix:
             line = ""
             for cell in row:
                 # Use white blocks for QR code (visible on dark backgrounds)
                 # and spaces for empty areas (visible on light backgrounds)
-                line += f"{Fore.WHITE}██{Style.RESET_ALL}" if cell else "  "
+                if cell:
+                    line += f"{Fore.WHITE}██{Style.RESET_ALL}"
+                else:
+                    line += "  "
             print(line)
         
+        print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        if saved_filename:
+            print(f"{Fore.YELLOW}📝 Note: QR code with logo cannot be displayed in terminal.")
+            print(f"{Fore.CYAN}📁 The logo version has been saved to: {saved_filename}")
+        else:
+            print(f"{Fore.RED}❌ Logo QR code could not be saved")
+
+    def display_terminal_qr_with_logo(self, matrix, has_logo=False):
+        """Display QR code matrix in terminal with optional logo indication"""
+        logo_msg = " (with logo)" if has_logo else ""
+        print(f"\n{Fore.YELLOW}🔥 Your perfectly grilled QR code is ready{logo_msg}! 🔥")
+        print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        
+        for row in matrix:
+            line = ""
+            for cell in row:
+                # Use white blocks for QR code (visible on dark backgrounds)
+                # and spaces for empty areas (visible on light backgrounds)
+                if cell:
+                    line += f"{Fore.WHITE}██{Style.RESET_ALL}"
+                else:
+                    line += "  "
+            print(line)
+        
+        if has_logo:
+            print(f"{Fore.YELLOW}🧂 The pattern in the center shows your pixel salt (logo) as ASCII art")
         print(f"{Fore.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 class BBQRCooker:
@@ -1506,34 +1696,70 @@ class BBQRCooker:
         self.qr_cooker = QRCooker()
         self.wifi_manager = WiFiManager()
     
-    def handle_url(self, url, save_file=False, copy_to_clipboard=False):
+    def _get_logo_params(self, ask_for_logo=True):
+        """Helper method to get logo parameters from user input"""
+        logo_path = None
+        logo_size_ratio = 0.2
+        
+        if ask_for_logo:
+            use_logo = input(f"\n{Fore.CYAN}🎨 Add a logo to your QR code? (y/N): ").strip().lower()
+            if use_logo in ['y', 'yes']:
+                logo_path = get_file_path(f"{Fore.YELLOW}🖼️  Enter logo image path: ")
+                if logo_path and os.path.exists(logo_path):
+                    try:
+                        # Validate it's an image
+                        Image.open(logo_path).close()
+                        
+                        # Ask for logo size
+                        size_input = input(f"{Fore.YELLOW}📏 Logo Size (10-30% of QR code, default 20%): ").strip()
+                        if size_input:
+                            try:
+                                size_percent = int(size_input)
+                                if 10 <= size_percent <= 30:
+                                    logo_size_ratio = size_percent / 100.0
+                                else:
+                                    BBQTheme.error("Logo size must be between 10-30%. Using default 20%.")
+                            except ValueError:
+                                BBQTheme.error("Invalid size input. Using default 20%.")
+                        
+                        BBQTheme.success(f"🎨 Logo configured: {os.path.basename(logo_path)} ({int(logo_size_ratio*100)}%)")
+                    except Exception as e:
+                        BBQTheme.error(f"Invalid image file: {e}")
+                        logo_path = None
+                elif logo_path:
+                    BBQTheme.error(f"Logo file not found: {logo_path}")
+                    logo_path = None
+        
+        return logo_path, logo_size_ratio
+
+    def handle_url(self, url, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle URL input"""
         BBQTheme.info(f"Grilling URL: {url}")
-        return self.qr_cooker.cook_qr(url, save_file, copy_to_clipboard, "url")
+        return self.qr_cooker.cook_qr(url, save_file, copy_to_clipboard, "url", logo_path, logo_size_ratio)
     
-    def handle_text(self, text, save_file=False, copy_to_clipboard=False):
+    def handle_text(self, text, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle text input"""
         BBQTheme.info(f"Smoking text into QR code...")
-        return self.qr_cooker.cook_qr(text, save_file, copy_to_clipboard, "text")
+        return self.qr_cooker.cook_qr(text, save_file, copy_to_clipboard, "text", logo_path, logo_size_ratio)
     
-    def handle_image(self, image_path, save_file=False, copy_to_clipboard=False):
+    def handle_image(self, image_path, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle image input - convert to base64"""
         try:
             with open(image_path, 'rb') as img_file:
                 img_data = base64.b64encode(img_file.read()).decode()
                 BBQTheme.info(f"Converting image to base64 and grilling...")
-                return self.qr_cooker.cook_qr(f"data:image/png;base64,{img_data}", save_file, copy_to_clipboard, "image")
+                return self.qr_cooker.cook_qr(f"data:image/png;base64,{img_data}", save_file, copy_to_clipboard, "image", logo_path, logo_size_ratio)
         except Exception as e:
             BBQTheme.error(f"Failed to process image: {e}")
             return None
     
-    def handle_clipboard(self, save_file=False, copy_to_clipboard=False):
+    def handle_clipboard(self, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle clipboard content"""
         try:
             clipboard_content = pyperclip.paste()
             if clipboard_content:
                 BBQTheme.info("Found content in clipboard! Grilling it up...")
-                return self.qr_cooker.cook_qr(clipboard_content, save_file, copy_to_clipboard, "clipboard")
+                return self.qr_cooker.cook_qr(clipboard_content, save_file, copy_to_clipboard, "clipboard", logo_path, logo_size_ratio)
             else:
                 BBQTheme.error("Clipboard is empty! Nothing to grill.")
                 return None
@@ -1541,7 +1767,7 @@ class BBQRCooker:
             BBQTheme.error(f"Failed to access clipboard: {e}")
             return None
     
-    def handle_wifi_menu(self, save_file=False, copy_to_clipboard=False):
+    def handle_wifi_menu(self, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2, ask_for_logo=True):
         """Handle WiFi QR code generation with menu"""
         print(f"\n{Fore.MAGENTA}📶 WiFi QR Code Generator 📶")
         print(f"{Fore.CYAN}1. 🔥 Use saved WiFi profile")
@@ -1549,15 +1775,19 @@ class BBQRCooker:
         
         choice = input(f"\n{Fore.YELLOW}Choose your grilling method (1-2): ").strip()
         
+        # Get logo parameters only if not provided and flag is set
+        if logo_path is None and ask_for_logo:
+            logo_path, logo_size_ratio = self._get_logo_params()
+        
         if choice == "1":
-            return self.handle_saved_wifi(save_file, copy_to_clipboard)
+            return self.handle_saved_wifi(save_file, copy_to_clipboard, logo_path, logo_size_ratio)
         elif choice == "2":
-            return self.handle_new_wifi(save_file, copy_to_clipboard)
+            return self.handle_new_wifi(save_file, copy_to_clipboard, logo_path, logo_size_ratio)
         else:
             BBQTheme.error("Invalid choice! Please select 1 or 2.")
             return None
     
-    def handle_saved_wifi(self, save_file=False, copy_to_clipboard=False):
+    def handle_saved_wifi(self, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle saved WiFi profiles"""
         profiles = self.wifi_manager.get_saved_wifi_profiles()
         
@@ -1581,7 +1811,7 @@ class BBQRCooker:
                     BBQTheme.info(f"Grilling WiFi QR code for: {selected_profile}")
                     wifi_string = self.wifi_manager.create_wifi_qr_string(
                         selected_profile, password)
-                    return self.qr_cooker.cook_qr(wifi_string, save_file, copy_to_clipboard, "wifi")
+                    return self.qr_cooker.cook_qr(wifi_string, save_file, copy_to_clipboard, "wifi", logo_path, logo_size_ratio)
                 else:
                     BBQTheme.error(f"Could not retrieve password for {selected_profile}")
                     BBQTheme.info("Let's get the password manually...")
@@ -1602,7 +1832,7 @@ class BBQRCooker:
                     BBQTheme.info(f"Grilling WiFi QR code for: {selected_profile}")
                     wifi_string = self.wifi_manager.create_wifi_qr_string(
                         selected_profile, manual_password, security_type)
-                    return self.qr_cooker.cook_qr(wifi_string, save_file, copy_to_clipboard, "wifi")
+                    return self.qr_cooker.cook_qr(wifi_string, save_file, copy_to_clipboard, "wifi", logo_path, logo_size_ratio)
             else:
                 BBQTheme.error("Invalid selection!")
                 return None
@@ -1610,7 +1840,7 @@ class BBQRCooker:
             BBQTheme.error("Please enter a valid number!")
             return None
     
-    def handle_new_wifi(self, save_file=False, copy_to_clipboard=False):
+    def handle_new_wifi(self, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle new WiFi credentials input"""
         print(f"\n{Fore.CYAN}🥩 Enter new WiFi credentials:")
         
@@ -1635,9 +1865,9 @@ class BBQRCooker:
         
         BBQTheme.info(f"Grilling WiFi QR code for: {ssid}")
         wifi_string = self.wifi_manager.create_wifi_qr_string(ssid, password, security_type)
-        return self.qr_cooker.cook_qr(wifi_string, save_file, copy_to_clipboard, "wifi")
+        return self.qr_cooker.cook_qr(wifi_string, save_file, copy_to_clipboard, "wifi", logo_path, logo_size_ratio)
     
-    def handle_upload(self, file_path, save_file=False, copy_to_clipboard=False, use_secret=True, expires_hours=None):
+    def handle_upload(self, file_path, save_file=False, copy_to_clipboard=False, use_secret=True, expires_hours=None, logo_path=None, logo_size_ratio=0.2):
         """Handle file upload to 0x0.st and generate QR code"""
         if not os.path.exists(file_path):
             BBQTheme.error(f"File not found: {file_path}")
@@ -1668,15 +1898,15 @@ class BBQRCooker:
             BBQTheme.info("🔥 Generating QR code for file download...")
             
             # Generate QR code
-            return self.qr_cooker.cook_qr(qr_data, save_file, copy_to_clipboard, "file_upload")
+            return self.qr_cooker.cook_qr(qr_data, save_file, copy_to_clipboard, "file_upload", logo_path, logo_size_ratio)
             
         except Exception as e:
             BBQTheme.error(f"File upload failed: {e}")
             return None
     
-    def handle_upload_menu(self, save_file=False, copy_to_clipboard=False):
+    def handle_upload_menu(self, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2, ask_for_logo=True):
         """Handle file upload menu with options"""
-        print(f"\n{Fore.MAGENTA}📤 File Upload to 0x0.st 📤")
+        print(f"\n{Fore.MAGENTA}📤 File Upload 📤")
         print(f"{Fore.CYAN}Upload files and generate QR codes for easy sharing!")
         print(f"{Fore.YELLOW}⏰ Files will be automatically removed after 30 days")
         print(f"{Fore.RED}ALL DATA IS STORED ON 0x0.st - PLEASE READ THE TOS AND PRIVACY POLICY BEFORE USING.")
@@ -1715,16 +1945,20 @@ class BBQRCooker:
         except OSError:
             pass
         
+        # Get logo parameters only if not provided and flag is set
+        if logo_path is None and ask_for_logo:
+            logo_path, logo_size_ratio = self._get_logo_params()
+        
         # Upload and generate QR code with 30-day expiration
-        return self.handle_upload(file_path, save_file, copy_to_clipboard, use_secret=True, expires_hours=720)
+        return self.handle_upload(file_path, save_file, copy_to_clipboard, use_secret=True, expires_hours=720, logo_path=logo_path, logo_size_ratio=logo_size_ratio)
     
-    def handle_piped_input(self, save_file=False, copy_to_clipboard=False):
+    def handle_piped_input(self, save_file=False, copy_to_clipboard=False, logo_path=None, logo_size_ratio=0.2):
         """Handle piped input from stdin"""
         if not sys.stdin.isatty():  # Check if data is piped
             piped_data = sys.stdin.read().strip()
             if piped_data:
                 BBQTheme.info("Found piped data! Grilling it up...")
-                return self.qr_cooker.cook_qr(piped_data, save_file, copy_to_clipboard, "piped")
+                return self.qr_cooker.cook_qr(piped_data, save_file, copy_to_clipboard, "piped", logo_path, logo_size_ratio)
         return None
     
     def handle_watch(self, file_path, output_path=None, qr_size=10):
@@ -1886,6 +2120,9 @@ Examples:
   bbqr --text "Hello World!" --save
   bbqr --url https://github.com --copy
   bbqr --text "Hello World!" --save --copy
+  bbqr --url https://mycompany.com --logo company_logo.png
+  bbqr --wifi --logo logo.png --logo-size 25
+  bbqr --text "Hello World!" --logo brand.jpg --save
   bbqr --watch journal.txt
   bbqr --watch journal.txt --output /path/to/qr_codes/journal_qr.png
   bbqr --watch notes.md --size 15
@@ -1913,6 +2150,9 @@ Examples:
     parser.add_argument('--output', '-o', help='Output path for watch mode (default: same directory as watched file)')
     parser.add_argument('--size', '-s', type=int, default=10,
                        help='QR code size (default: 10)')
+    parser.add_argument('--logo', '-l', help='Add a logo to the center of QR code')
+    parser.add_argument('--logo-size', type=int, default=20, choices=range(10, 31),
+                       help='Logo size as percentage of QR code (10-30%%, default: 20%%)')
     parser.add_argument('--save', action='store_true', 
                        help='Save QR code as PNG file')
     parser.add_argument('--copy', action='store_true',
@@ -1932,28 +2172,45 @@ Examples:
     cooker = BBQRCooker()
     cooker.qr_cooker.size = args.size
     
+    # Prepare logo parameters
+    logo_path = None
+    logo_size_ratio = args.logo_size / 100.0
+    
+    if args.logo:
+        if os.path.exists(args.logo):
+            try:
+                # Validate it's an image
+                Image.open(args.logo).close()
+                logo_path = args.logo
+                BBQTheme.success(f"🎨 Logo configured: {os.path.basename(logo_path)} ({args.logo_size}%)")
+            except Exception as e:
+                BBQTheme.error(f"Invalid logo image: {e}")
+        else:
+            BBQTheme.error(f"Logo file not found: {args.logo}")
+    
     # Check for piped input first
-    piped_result = cooker.handle_piped_input(args.save, args.copy)
+    piped_result = cooker.handle_piped_input(args.save, args.copy, logo_path, logo_size_ratio)
     if piped_result:
         return
     
     # Handle different input types
     if args.url:
-        cooker.handle_url(args.url, args.save, args.copy)
+        cooker.handle_url(args.url, args.save, args.copy, logo_path, logo_size_ratio)
     elif args.text:
-        cooker.handle_text(args.text, args.save, args.copy)
+        cooker.handle_text(args.text, args.save, args.copy, logo_path, logo_size_ratio)
     elif args.image:
         if os.path.exists(args.image):
-            cooker.handle_image(args.image, args.save, args.copy)
+            cooker.handle_image(args.image, args.save, args.copy, logo_path, logo_size_ratio)
         else:
             BBQTheme.error(f"Image file not found: {args.image}")
     elif args.clipboard:
-        cooker.handle_clipboard(args.save, args.copy)
+        cooker.handle_clipboard(args.save, args.copy, logo_path, logo_size_ratio)
     elif args.wifi:
-        cooker.handle_wifi_menu(args.save, args.copy)
+        # Create a special wifi handler that doesn't ask for logo if already provided via CLI
+        cooker.handle_wifi_menu(args.save, args.copy, logo_path, logo_size_ratio, ask_for_logo=False)
     elif args.file:
         if os.path.exists(args.file):
-            cooker.handle_upload(args.file, args.save, args.copy, use_secret=True, expires_hours=720)  # 30 days
+            cooker.handle_upload(args.file, args.save, args.copy, use_secret=True, expires_hours=720, logo_path=logo_path, logo_size_ratio=logo_size_ratio)  # 30 days
         else:
             BBQTheme.error(f"File not found: {args.file}")
     elif args.watch:
@@ -1977,26 +2234,29 @@ Examples:
         
         choice = input(f"\n{Fore.YELLOW}Select your grilling option (1-9): ").strip()
         
+        # Get logo parameters for interactive mode
+        logo_path, logo_size_ratio = cooker._get_logo_params()
+        
         if choice == "1":
             url = input(f"{Fore.YELLOW}Enter URL: ").strip()
             if url:
-                cooker.handle_url(url, args.save, args.copy)
+                cooker.handle_url(url, args.save, args.copy, logo_path, logo_size_ratio)
         elif choice == "2":
             text = input(f"{Fore.YELLOW}Enter text: ").strip()
             if text:
-                cooker.handle_text(text, args.save, args.copy)
+                cooker.handle_text(text, args.save, args.copy, logo_path, logo_size_ratio)
         elif choice == "3":
             image_path = get_file_path(f"{Fore.YELLOW}Enter image path: ")
             if image_path and os.path.exists(image_path):
-                cooker.handle_image(image_path, args.save, args.copy)
+                cooker.handle_image(image_path, args.save, args.copy, logo_path, logo_size_ratio)
             else:
                 BBQTheme.error("Image file not found!")
         elif choice == "4":
-            cooker.handle_clipboard(args.save, args.copy)
+            cooker.handle_clipboard(args.save, args.copy, logo_path, logo_size_ratio)
         elif choice == "5":
-            cooker.handle_wifi_menu(args.save, args.copy)
+            cooker.handle_wifi_menu(args.save, args.copy, logo_path, logo_size_ratio, ask_for_logo=False)
         elif choice == "6":
-            cooker.handle_upload_menu(args.save, args.copy)
+            cooker.handle_upload_menu(args.save, args.copy, logo_path, logo_size_ratio, ask_for_logo=False)
         elif choice == "7":
             file_path = get_file_path(f"{Fore.YELLOW}Enter file path to watch: ")
             if file_path:
@@ -2008,7 +2268,6 @@ Examples:
         elif choice == "8":
             file_path = get_file_path(f"{Fore.YELLOW}Enter file path with multiple lines: ")
             if file_path:
-                cooker.handle_multi(file_path, args.size)
                 cooker.handle_multi(file_path, args.size)
             else:
                 BBQTheme.error("File path cannot be empty!")

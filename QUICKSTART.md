@@ -48,6 +48,11 @@ python bbqr.py --read qrcode.png
 
 # Custom size and auto-save
 python bbqr.py --text "Hello" --size 15 --save
+
+# Logo embedding!
+python bbqr.py --url "https://mycompany.com" --logo company_logo.png
+python bbqr.py --wifi --logo brand.jpg --logo-size 25
+python bbqr.py --text "Hello World!" --logo logo.png --save
 ```
 
 ### Interactive Mode
@@ -81,6 +86,31 @@ curl -s https://api.github.com/users/octocat | python bbqr.py
 # Save piped content
 echo "Meeting at 3PM" | python bbqr.py --save
 ```
+
+### Logo Embedding
+
+Add custom logos to your QR codes:
+
+```bash
+# Add logo via command line (auto-detects logo size)
+python bbqr.py --text "Hello!" --logo my_logo.png
+
+# Specify logo size (10-30% of QR code)
+python bbqr.py --wifi --logo company_logo.jpg --logo-size 20
+
+# Interactive mode will prompt for logo options
+python bbqr.py
+```
+
+### Supported Logo Formats
+- PNG, JPG, JPEG, GIF, BMP, TIFF
+- Transparent backgrounds supported
+- Automatic scaling and aspect ratio preservation
+
+### Notes
+- QR codes with logos are automatically saved to files
+- Uses high error correction for better scannability
+- Default logo size: 20% (recommended)
 
 ## Advanced Features
 
@@ -146,6 +176,25 @@ BBQR can decode QR codes and handle different content types:
 - **With --save**: Terminal display + PNG file
 - **Filename format**: `bbqr_[type]_[YYYYMMDD_HHMMSS].png`
 - **File types**: text, url, wifi, clipboard, piped, image, file_upload
+
+## 🚀 User Experience Improvements
+
+### Streamlined Interactive Mode
+- **Single Logo Prompt**: Logo preferences asked once per session
+- **Smart Menu Flow**: No redundant questions or double prompts  
+- **Consistent Experience**: Same workflow for all QR types
+
+### Better Error Handling
+- **Helpful Suggestions**: Shows similar files when paths not found
+- **Graceful Fallbacks**: Continues without logo if image fails to load
+- **Clear Messages**: BBQ-themed, informative error messages
+
+## Tips & Best Practices
+
+- Use 10-20% logo size for best scannability
+- Test QR codes with different devices after adding logos
+- Keep logos simple with high contrast for better results
+- Interactive mode is great for exploring features
 
 ## Quick Examples
 
