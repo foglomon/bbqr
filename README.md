@@ -2,6 +2,10 @@
 
 **BBQR** (pronounced "barbequer"), the hottest terminal-based QR code generator that grills your data to perfection!
 
+![PyPI - Status](https://img.shields.io/pypi/status/bbqr)
+[![PyPI - Version](https://img.shields.io/pypi/v/bbqr?label=PyPI%20Version)
+](https://pypi.org/project/bbqr/)
+
 ## 🍖 Features
 
 BBQR can handle all your QR code grilling needs:
